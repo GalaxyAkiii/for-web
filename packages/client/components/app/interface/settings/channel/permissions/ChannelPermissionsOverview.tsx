@@ -1,12 +1,13 @@
 import { For, Show, createMemo } from "solid-js";
 
 import { Trans } from "@lingui/solid/macro";
-import { Channel } from "stoat.js";
+import { Channel, ServerRole } from "stoat.js";
 import { styled } from "styled-system/jsx";
 
 import { CategoryButton, Column, Text, typography } from "@revolt/ui";
 import { Symbol } from "@revolt/ui/components/utils/Symbol";
 
+import { useUser } from "@revolt/client";
 import { useSettingsNavigation } from "../../Settings";
 
 /**
@@ -30,6 +31,12 @@ function countBits(v: bigint) {
  */
 export function ChannelPermissionsOverview(props: { context: Channel }) {
   const { navigate } = useSettingsNavigation();
+  const user = useUser();
+
+  const isOwner = () => props.context.server?.ownerId === user()?.id;
+  const memberRanking = () => props.context.server?.member?.ranking ?? Infinity;
+  const isOutranked = (role: ServerRole) =>
+    !isOwner() && (role.rank ?? 0) < memberRanking();
 
   const roles = createMemo(() => {
     const ordered = props.context.server?.orderedRoles;
@@ -60,6 +67,14 @@ export function ChannelPermissionsOverview(props: { context: Channel }) {
       >
         <Trans>Everyone</Trans>
       </CategoryButton>
+      <Show when={(roles().overrides?.length ?? 0) === 0}>
+        <TipText>
+          <Trans>
+            Tip: To make this channel private, create a role override for your
+            role before restricting Everyone.
+          </Trans>
+        </TipText>
+      </Show>
 
       <Column gap="sm">
         <Text class="label">
@@ -90,13 +105,23 @@ export function ChannelPermissionsOverview(props: { context: Channel }) {
                 action="chevron"
                 onClick={() => navigate(`permissions/${role.id}`)}
                 description={
-                  <Trans>
-                    Grants{" "}
-                    {countBits(props.context.rolePermissions![role.id].a)}{" "}
-                    permissions and denies{" "}
-                    {countBits(props.context.rolePermissions![role.id].d)}{" "}
-                    permissions
-                  </Trans>
+                  isOutranked(role) ? (
+                    <Trans>
+                      Grants{" "}
+                      {countBits(props.context.rolePermissions![role.id].a)}{" "}
+                      permissions and denies{" "}
+                      {countBits(props.context.rolePermissions![role.id].d)}{" "}
+                      permissions (Higher rank)
+                    </Trans>
+                  ) : (
+                    <Trans>
+                      Grants{" "}
+                      {countBits(props.context.rolePermissions![role.id].a)}{" "}
+                      permissions and denies{" "}
+                      {countBits(props.context.rolePermissions![role.id].d)}{" "}
+                      permissions
+                    </Trans>
+                  )
                 }
               >
                 {role.name}
@@ -134,7 +159,13 @@ export function ChannelPermissionsOverview(props: { context: Channel }) {
                 iconBackground={!!role.colour}
                 action="chevron"
                 onClick={() => navigate(`permissions/${role.id}`)}
-                description={<Trans>No permissions set yet</Trans>}
+                description={
+                  isOutranked(role) ? (
+                    <Trans>No permissions set yet (Higher rank)</Trans>
+                  ) : (
+                    <Trans>No permissions set yet</Trans>
+                  )
+                }
               >
                 {role.name}
               </CategoryButton>
@@ -159,5 +190,12 @@ const EmptyState = styled("span", {
   base: {
     color: "var(--md-sys-color-on-surface-variant)",
     ...typography.raw({ class: "body", size: "medium" }),
+  },
+});
+
+const TipText = styled("span", {
+  base: {
+    color: "var(--md-sys-color-on-surface-variant)",
+    ...typography.raw({ class: "label" }),
   },
 });

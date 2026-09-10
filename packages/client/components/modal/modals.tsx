@@ -10,6 +10,7 @@ import { BanMemberModal } from "./modals/BanMember";
 import { BanNonMemberModal } from "./modals/BanNonMember";
 import { ChangelogModal } from "./modals/Changelog";
 import { ChannelInfoModal } from "./modals/ChannelInfo";
+import { ChannelLockoutWarningModal } from "./modals/ChannelLockoutWarning";
 import { ChannelToggleMatureModal } from "./modals/ChannelToggleMature";
 import { CreateBotModal } from "./modals/CreateBot";
 import { CreateCategoryModal } from "./modals/CreateCategory";
@@ -94,6 +95,8 @@ export function RenderModal(props: ActiveModal & { onClose: () => void }) {
       return <AddMembersToGroupModal {...modalProps} />;
     case "channel_info":
       return <ChannelInfoModal {...modalProps} />;
+    case "channel_lockout_warning":
+      return <ChannelLockoutWarningModal {...modalProps} />;
     case "channel_toggle_mature":
       return <ChannelToggleMatureModal {...modalProps} />;
     case "create_bot":

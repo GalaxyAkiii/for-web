@@ -59,6 +59,10 @@ export type Modals =
       channel: Channel;
     }
   | {
+      type: "channel_lockout_warning";
+      onConfirm: () => void | Promise<void>;
+    }
+  | {
       type: "channel_toggle_mature";
       channel: Channel;
     }

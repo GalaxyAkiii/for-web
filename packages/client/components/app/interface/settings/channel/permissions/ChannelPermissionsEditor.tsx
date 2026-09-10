@@ -1,6 +1,6 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
 
-import { useLingui } from "@lingui/solid/macro";
+import { Trans, useLingui } from "@lingui/solid/macro";
 import {
   API,
   Channel,
@@ -12,6 +12,9 @@ import { styled } from "styled-system/jsx";
 
 import { Button, Checkbox2, Text, Switch as UiSwitch } from "@revolt/ui";
 import { typography } from "@revolt/ui/components/design/Text";
+
+import { useUser } from "@revolt/client";
+import { useModals } from "@revolt/modal";
 
 type Props = (
   | { type: "server_default"; context: Server }
@@ -37,6 +40,49 @@ type Context = API.Channel["channel_type"] | "Server";
  */
 export function ChannelPermissionsEditor(props: Props) {
   const { t } = useLingui();
+  const { openModal } = useModals();
+  const user = useUser();
+
+  const isRoleOutranked = () => {
+    if (props.type !== "channel_role") return false;
+    if (!(props.context instanceof Channel)) return false;
+
+    const server = props.context.server;
+    if (!server) return false;
+
+    if (server.ownerId === user()?.id) return false;
+
+    const memberRanking = server.member?.ranking ?? Infinity;
+    const targetRole = server.roles.get(props.roleId);
+    if (!targetRole) return false;
+
+    return (targetRole.rank ?? 0) < memberRanking;
+  };
+
+  const isLockout = () => {
+    if (props.type !== "channel_default") return false;
+    if (!(props.context instanceof Channel)) return false;
+
+    const server = props.context.server;
+    if (!server) return false;
+
+    if (server.ownerId === user()?.id) return false;
+
+    const VIEW_CHANNEL = 1n << 20n;
+    const deniesView = (value()[1] & VIEW_CHANNEL) === VIEW_CHANNEL;
+    if (!deniesView) return false;
+
+    const member = server.member;
+    const userRoles = member?.roles ?? [];
+    const rolePermissions = props.context.rolePermissions;
+
+    const hasAllowOverride = userRoles.some((roleId) => {
+      const override = rolePermissions?.[roleId];
+      return override && (BigInt(override.a) & VIEW_CHANNEL) === VIEW_CHANNEL;
+    });
+
+    return !hasAllowOverride;
+  };
 
   const context: Context =
     // eslint-disable-next-line solid/reactivity
@@ -139,9 +185,7 @@ export function ChannelPermissionsEditor(props: Props) {
     }
   }
 
-  async function save() {
-    if (savePending()) return;
-
+  async function performSave() {
     setPending(true);
     try {
       if (
@@ -155,6 +199,20 @@ export function ChannelPermissionsEditor(props: Props) {
     } finally {
       setPending(false);
     }
+  }
+
+  async function save() {
+    if (savePending() || isRoleOutranked()) return;
+
+    if (isLockout()) {
+      openModal({
+        type: "channel_lockout_warning",
+        onConfirm: () => performSave(),
+      });
+      return;
+    }
+
+    await performSave();
   }
 
   const Permissions: {
@@ -476,6 +534,14 @@ export function ChannelPermissionsEditor(props: Props) {
         gap: "var(--gap-lg)",
       })}
     >
+      <Show when={isRoleOutranked()}>
+        <WarningText>
+          <Trans>
+            You cannot edit permissions for this role because its rank is higher
+            than your highest role.
+          </Trans>
+        </WarningText>
+      </Show>
       <For each={Permissions}>
         {(entry) => (
           <Show when={description(entry)}>
@@ -501,6 +567,7 @@ export function ChannelPermissionsEditor(props: Props) {
                     setValue((v) => [v[0] ^ BigInt(entry.value), v[1]])
                   }
                   havePermission={
+                    !isRoleOutranked() &&
                     (props.context.permission & entry.value) === entry.value
                   }
                 />
@@ -534,6 +601,7 @@ export function ChannelPermissionsEditor(props: Props) {
                     setValue([allow, deny]);
                   }}
                   havePermission={
+                    !isRoleOutranked() &&
                     (props.context.permission & entry.value) === entry.value
                   }
                 />
@@ -557,6 +625,7 @@ export function ChannelPermissionsEditor(props: Props) {
             isDisabled={
               !hasChanges() ||
               savePending() ||
+              isRoleOutranked() ||
               (props.additionalActions?.isDirty() &&
                 !props.additionalActions.canSave())
             }
@@ -590,6 +659,13 @@ const ActionRow = styled("div", {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "var(--gap-md)",
+  },
+});
+
+const WarningText = styled("span", {
+  base: {
+    ...typography.raw({ class: "body" }),
+    color: "var(--md-sys-color-error)",
   },
 });
 
